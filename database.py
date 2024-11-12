@@ -4,7 +4,7 @@ from mysql.connector import Error
 class DatabaseConnector:
     def __init__(self):
         self.host = '127.0.0.1'
-        self.port = 3306
+        self.port = 3307
         self.user = 'root'
         self.password = 'root'
         self.database = 'comp'
