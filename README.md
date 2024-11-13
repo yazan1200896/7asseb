@@ -1,4 +1,6 @@
+Here's the updated API documentation with added details and consistency:
 
+---
 
 # API Documentation
 
@@ -198,9 +200,25 @@ http://127.0.0.1:8000/delete_order/?order_id=1
 
 ---
 
+## Excel Export API
+
+### 1. **Export All Products to Excel**
+- **URL**: `/export_products_excel/`
+- **Method**: `GET`
+
+**Example**:
+```plaintext
+http://127.0.0.1:8000/export_products_excel/
+```
+
+This API will generate an Excel file containing all products and return it as a downloadable file.
+
+---
+
 ### Notes for Frontend Developers:
 1. **Date Format**: Ensure that all date values follow the `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` format.
 2. **Error Handling**: All APIs return error messages in JSON format with appropriate HTTP status codes.
 3. **Testing**: Test the endpoints using tools like Postman or directly in the browser by appending query parameters.
+4. **CORS**: Ensure CORS is enabled for frontend applications making cross-origin requests.
 
 ---
