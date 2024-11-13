@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException
+from starlette.responses import FileResponse
+
 from database import DatabaseConnector
+from excel_exporter import ExcelExporter
 from product import Product
 from Supplier import Supplier
 from order import Order
@@ -72,7 +75,18 @@ async def update_order_state(order_id: int, new_state: str):
 @app.get("/delete_order/")
 async def delete_order(order_id: int):
     return order.delete_order(order_id)
-
+@app.get("/create_products_excel/")
+async def create_products_excel():
+    file_path, error = ExcelExporter.export_products_to_excel()
+    if error:
+        raise HTTPException(status_code=500, detail=f"Failed to create Excel file: {error}")
+    if not file_path:
+        raise HTTPException(status_code=404, detail="No products found.")
+    return FileResponse(
+        path=file_path,
+        filename=file_path.split("/")[-1],  # Use the filename directly
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 # Root endpoint for testing
 @app.get("/")
 async def root():
