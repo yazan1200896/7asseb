@@ -3,6 +3,7 @@ from mysql.connector import Error
 class Supplier:
     def __init__(self, db_connector):
         self.db_connector = db_connector
+        print("self.db_connector = ", self.db_connector)
 
     def add_supplier(self, name, phone, address):
         try:

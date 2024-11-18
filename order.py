@@ -1,5 +1,7 @@
 from mysql.connector import Error
 from datetime import datetime
+from database import DatabaseConnector
+
 
 
 class Order:
