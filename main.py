@@ -156,7 +156,7 @@ async def home(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("home.html", {"request": request, "user": user["username"]})
-@app.get("/logout")
+@app.get("/logout" )
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
