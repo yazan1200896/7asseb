@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+    <div id="navbar"></div>
+    <h1>Admin Dashboard</h1>
+
+    <h2>All Users</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Password</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.username }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.role }}</td>
+                <td>{{ user.password }}</td>
+                <td>
+                    <button onclick="editUser('{{ user.username }}')">Edit</button>
+                    {% if user.role != 'admin' %}
+                    <button onclick="deleteUser('{{ user.username }}')">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Add New User</h2>
+    <form id="addUserForm" method="post" action="/add_user">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" placeholder="Enter username" required>
+
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" placeholder="Enter email" required>
+
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" placeholder="Enter password" required>
+
+        <label for="role">Role:</label>
+        <select id="role" name="role" required>
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+        </select>
+
+        <button type="submit">Add User</button>
+    </form>
+</body>
+<script>
+    function editUser(username) {
+        alert(`Edit user: ${username}`);
+        // Add your edit logic here
+    }
+
+    function deleteUser(username) {
+        if (confirm(`Are you sure you want to delete user: ${username}?`)) {
+            fetch(`/delete_user?username=${username}`, { method: 'POST' })
+                .then((response) => {
+                    if (response.ok) {
+                        alert('User deleted successfully.');
+                        location.reload();
+                    } else {
+                        alert('Failed to delete user.');
+                    }
+                });
+        }
+    }
+</script>
+</html>

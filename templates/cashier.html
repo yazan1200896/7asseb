@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cashier Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            margin: 20px auto;
+            max-width: 800px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .product-search, .cart {
+            margin-bottom: 20px;
+        }
+        .product-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .product-item {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            width: 200px;
+        }
+        #cart-items {
+            list-style: none;
+            padding: 0;
+        }
+        #cart-items li {
+            margin-bottom: 10px;
+        }
+        #total-amount {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Cashier Dashboard</h1>
+        </header>
+
+        <section class="product-search">
+            <input type="text" id="search-input" placeholder="Search for a product by barcode">
+            <button onclick="searchProduct()">Search</button>
+        </section>
+
+        <section class="product-list" id="product-list">
+            <!-- Products will be listed here -->
+        </section>
+
+        <section class="cart">
+            <h2>Cart</h2>
+            <ul id="cart-items">
+                <!-- Cart items will be listed here -->
+            </ul>
+            <p id="total-amount">Total: $0.00</p>
+            <button onclick="checkout()">Checkout</button>
+        </section>
+    </div>
+
+    <script>
+        let products = []; // Will hold all products fetched from the database
+        let cart = []; // Cart to hold selected products
+
+        // Fetch and display all products
+        async function fetchProducts() {
+            try {
+                const response = await fetch('/get_all_products/');
+                if (response.ok) {
+                    products = await response.json();
+                    displayProducts(products);
+                } else {
+                    console.error("Failed to fetch products.");
+                }
+            } catch (error) {
+                console.error("Error fetching products:", error);
+            }
+        }
+
+        // Display products on the page
+        function displayProducts(products) {
+            const productList = document.getElementById('product-list');
+            productList.innerHTML = ''; // Clear existing products
+
+            products.forEach(product => {
+                const productDiv = document.createElement('div');
+                productDiv.classList.add('product-item');
+                productDiv.innerHTML = `
+                    <h3>${product.name}</h3>
+                    <p>Price: $${product.selling_price}</p>
+                    <p>Stock: ${product.quantity}</p>
+                    <button onclick="addToCart('${product.barcode}')">Add to Cart</button>
+                `;
+                productList.appendChild(productDiv);
+            });
+        }
+
+        // Add a product to the cart
+        function addToCart(barcode) {
+            const product = products.find(p => p.barcode === barcode);
+            if (!product) return;
+
+            const cartItem = cart.find(item => item.barcode === barcode);
+            if (cartItem) {
+                cartItem.quantity += 1;
+            } else {
+                cart.push({ ...product, quantity: 1 });
+            }
+            updateCart();
+        }
+
+        // Update the cart display
+        function updateCart() {
+            const cartItems = document.getElementById('cart-items');
+            const totalAmount = document.getElementById('total-amount');
+            cartItems.innerHTML = ''; // Clear existing cart items
+            let total = 0;
+
+            cart.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `${item.name} - ${item.quantity} x $${item.selling_price}`;
+                cartItems.appendChild(li);
+                total += item.quantity * item.selling_price;
+            });
+
+            totalAmount.textContent = `Total: $${total.toFixed(2)}`;
+        }
+
+        // Checkout and send cart to the database
+        async function checkout() {
+            try {
+                const response = await fetch('/checkout/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ cart })
+                });
+
+                if (response.ok) {
+                    alert('Checkout successful!');
+                    cart = [];
+                    updateCart();
+                } else {
+                    console.error("Failed to checkout.");
+                }
+            } catch (error) {
+                console.error("Error during checkout:", error);
+            }
+        }
+
+        // Search for a product by barcode
+        function searchProduct() {
+            const searchInput = document.getElementById('search-input').value.trim();
+            if (!searchInput) {
+                displayProducts(products); // Show all products if no input
+                return;
+            }
+
+            const filteredProducts = products.filter(product => product.barcode.includes(searchInput));
+            displayProducts(filteredProducts);
+        }
+
+        // Fetch products on page load
+        document.addEventListener('DOMContentLoaded', fetchProducts);
+    </script>
+</body>
+</html>

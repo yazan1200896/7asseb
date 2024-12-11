@@ -1,3 +1,5 @@
+from aifc import Error
+
 import app
 from fastapi import FastAPI, HTTPException, Depends, Form
 from fastapi.templating import Jinja2Templates
@@ -5,14 +7,17 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
+from starlette.responses import JSONResponse
+
 from database import DatabaseConnector
 from excel_exporter import ExcelExporter
 from product import Product
 from Supplier import Supplier
 from order import Order
-from PDFManager import PDFManager
+#from PDFManager import PDFManager
 from login import LoginManager  # Import the LoginManager class
 from fastapi.staticfiles import StaticFiles
+from user import User
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -22,13 +27,18 @@ db_connector = DatabaseConnector()
 product = Product(db_connector)
 supplier = Supplier(db_connector)
 order = Order(db_connector)
-pdf_manager = PDFManager(db_connector)
+#pdf_manager = PDFManager(db_connector)
 login_manager = LoginManager(db_connector=db_connector, session={})
 
 # Jinja2 template rendering
 templates = Jinja2Templates(directory="templates")
 app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
 
+
+
+@app.get("/cashier/", response_class=HTMLResponse)
+async def get_cashier_page(request: Request):
+    return templates.TemplateResponse("cashier.html", {"request": request})
 
 # ---------------------------
 # Product APIs
@@ -114,62 +124,178 @@ async def create_products_excel():
     )
 
 # PDF Export API
-@app.get("/create_products_pdf/")
-async def create_products_pdf():
-    file_path = pdf_manager.generate_products_pdf()
-    return FileResponse(
-        path=file_path,
-        filename=file_path.split("/")[-1],
-        media_type="application/pdf"
-    )
+#@app.get("/create_products_pdf/")
+#async def create_products_pdf():
+ #   file_path = pdf_manager.generate_products_pdf()
+  #  return FileResponse(
+   #     path=file_path,
+    #    filename=file_path.split("/")[-1],
+     #   media_type="application/pdf"
+    #)
 
 
 # ---------------------------
 # Login APIs
 # ---------------------------
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    if request.session.get("user"):
-        return RedirectResponse(url="/home")
-    return templates.TemplateResponse("login.html", {"request": request})
+# In your login route (assuming LoginManager handles authentication)
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """
-    Handle login logic.
-    """
     result = login_manager.authenticate_user(username, password)
+
     if result["status"] == "success":
-        # Set the session
-        request.session["user"] = result["user"]
+        user = result["user"]  # Assuming `user` contains 'username', 'email', and 'role'
+
+        # Store user information and role in session
+        request.session["user"] = {
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],  # Ensure the role is stored
+        }
+
+        # Redirect to the home page or admin dashboard based on the role
+        if user["role"] == "admin":
+            return RedirectResponse(url="/admin", status_code=303)
         return RedirectResponse(url="/home", status_code=303)
+
     else:
-        # Render login page with error message
         return templates.TemplateResponse(
             "login.html",
             {"request": request, "error": result["message"]}
         )
 
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    # Check if the user is already logged in by checking session
+    if request.session.get("user"):
+        # If session exists, redirect directly to the home page
+        return RedirectResponse(url="/home")
+    # If no session, show the login page
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
 @app.get("/home", response_class=HTMLResponse)
 async def home(request: Request):
+    # Retrieve user data from session
     user = request.session.get("user")
+
+    # If no user session exists, redirect to login page
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse("home.html", {"request": request, "user": user["username"]})
+    print(request.session.get("user"))
+
+    # Pass user data to the home page template
+    return templates.TemplateResponse("home.html", {"request": request, "user": user})
+
+
 @app.get("/logout" )
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
 
-@app.get("/admin")
+
+@app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     if not login_manager.is_logged_in():
         return RedirectResponse(url="/login")
     if not login_manager.has_role("admin"):
         raise HTTPException(status_code=403, detail="Access forbidden")
-    return {"message": "Welcome to the admin dashboard"}
+
+    try:
+        cursor = db_connector.get_cursor(dictionary=True)
+        # Query the database for users (using 'username' as the unique identifier)
+        query = "SELECT username, email, role, password FROM users"
+        cursor.execute(query)
+        users = cursor.fetchall()
+        return templates.TemplateResponse("admin_dashboard.html", {"request": request, "users": users})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving users: {e}")
+    finally:
+        cursor.close()
+
+
+@app.post("/delete_user/")
+async def delete_user(user_id: int):
+    try:
+        cursor = db_connector.get_cursor()
+        # Check the user's role before deleting
+        query_check = "SELECT role FROM users WHERE username = %s"
+        cursor.execute(query_check, (user_id,))
+        user = cursor.fetchone()
+
+        # Delete the user
+        query_delete = "DELETE FROM users WHERE username = %s"
+        cursor.execute(query_delete, (user_id,))
+        db_connector.connection.commit()
+        return {"message": "User deleted successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {e}")
+    finally:
+        cursor.close()
+
+
+@app.post("/add_user/")
+async def add_user(username: str, email: str, password: str, role: str, company_id: str = "2"):
+    print(f"Parameters: {username}, {email}, {password}, {role}, {company_id}")
+    return User.add_user(username, email, password, role, company_id)
+
+@app.post("/edit_password/")
+async def edit_password(user_id: int, new_password: str):
+    try:
+        cursor = db_connector.get_cursor()
+        query = "UPDATE users SET password = %s WHERE id = %s"
+        cursor.execute(query, (new_password, user_id))
+        db_connector.connection.commit()
+        return {"message": "Password updated successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating password: {e}")
+    finally:
+        cursor.close()
+
 
 # Root endpoint
+
 @app.get("/")
-async def root():
-    return {"message": "Welcome to the Product, Supplier, and Order API!"}
+async def login_page(request: Request):
+    # Check if the user is already logged in by checking session
+    if request.session.get("user"):
+        # If session exists, redirect directly to the home page
+        return RedirectResponse(url="/home")
+    # If no session, show the login page
+    return templates.TemplateResponse("login.html", {"request": request})
+
+user_manager = User(db_connector)
+
+@app.get("/get_all_products/")
+async def get_all_products():
+    products = product.get_all_products()
+    if "error" in products:
+        return JSONResponse(content=products, status_code=500)
+
+    # Transform product data to a JSON-friendly format
+    product_list = []
+    for prod in products:
+        product_list.append({
+            "id": prod[0],
+            "name": prod[1],
+            "quantity": prod[2],
+            "purchase_price": prod[3],
+            "selling_price": prod[4],
+            "images": prod[5],
+            "barcode": prod[6],
+            "date": str(prod[7]) if prod[7] else None
+        })
+
+    return product_list
+@app.post("/checkout/")
+async def checkout(cart: list):
+    try:
+        cursor = db_connector.get_cursor()
+        for item in cart:
+            cursor.execute("UPDATE product SET quantity = quantity - %s WHERE barcode = %s", (item['quantity'], item['barcode']))
+        db_connector.commit()
+        return {"message": "Checkout successful"}
+    except Error as e:
+        db_connector.rollback()
+        return {"error": f"Failed to process checkout: {e}"}
