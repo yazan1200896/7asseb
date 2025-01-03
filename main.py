@@ -1,6 +1,11 @@
 from aifc import Error
+from pathlib import Path
 
-import app
+from fastapi import FastAPI
+from ai import AI, InferenceHTTPClient
+
+from inference_sdk import InferenceHTTPClient
+
 from fastapi import FastAPI, HTTPException, Depends, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -35,6 +40,16 @@ templates = Jinja2Templates(directory="templates")
 app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
 
 
+
+
+
+CLIENT = InferenceHTTPClient(
+    api_url="https://detect.roboflow.com",
+    api_key="Vg1cHJhZQ7cqNjnGSYVk"
+)
+
+result = CLIENT.infer("11.jpg", model_id="jordan-coins-detection-nqdbs/5")
+print (result)
 
 @app.get("/cashier/", response_class=HTMLResponse)
 async def get_cashier_page(request: Request):
@@ -234,11 +249,21 @@ async def delete_user(user_id: int):
     finally:
         cursor.close()
 
-
+class UserCreateRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    role: str
 @app.post("/add_user/")
-async def add_user(username: str, email: str, password: str, role: str, company_id: str = "2"):
-    print(f"Parameters: {username}, {email}, {password}, {role}, {company_id}")
-    return User.add_user(username, email, password, role, company_id)
+async def add_user(user: UserCreateRequest):
+    return User.add_user(db_connector, user.username, user.email, user.role, user.password)
+
+
+
+@app.delete("/delete_user/{username}")
+async def delete_user(username: str):  # Accept 'username' as a path parameter
+    user_instance = User(db_connector)
+    return user_instance.delete_user(username)
 
 @app.post("/edit_password/")
 async def edit_password(user_id: int, new_password: str):
@@ -299,3 +324,122 @@ async def checkout(cart: list):
     except Error as e:
         db_connector.rollback()
         return {"error": f"Failed to process checkout: {e}"}
+
+
+from fastapi import FastAPI, File, UploadFile
+import cv2
+import os
+
+
+class Video:
+    def __init__(self, save_dir: str = "frames"):
+        self.save_dir = save_dir
+        os.makedirs(self.save_dir, exist_ok=True)
+
+    def save_uploaded_file(self, file: UploadFile, temp_name: str) -> str:
+        """
+        Save the uploaded file temporarily.
+        """
+        video_path = f"{temp_name}_{file.filename}"
+        with open(video_path, "wb") as f:
+            f.write(file.file.read())
+        return video_path
+
+    def extract_frames(self, video_path: str, frame_interval: int = 30) -> list:
+        """
+        Extract frames from the video and save them.
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError("Could not open the video file.")
+
+        frame_count = 0
+        saved_frames = []
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if frame_count % frame_interval == 0:
+                frame_path = os.path.join(self.save_dir, f"frame_{frame_count}.jpg")
+                cv2.imwrite(frame_path, frame)
+                saved_frames.append(frame_path)
+
+            frame_count += 1
+
+        cap.release()
+        return saved_frames
+
+    def clean_up(self, file_path: str):
+        """
+        Delete temporary files.
+        """
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+video_processor = Video()
+
+
+@app.post("/upload-video/")
+async def upload_video(file: UploadFile = File(...)):
+    """
+    Upload a video file, extract frames, and save them with auto-incremented names based on the video name.
+    """
+    try:
+        # Save uploaded video temporarily
+        video_name = Path(file.filename).stem  # Get the video name without extension
+        temp_video_path = video_processor.save_uploaded_file(file, "temp")
+
+        # Extract frames with updated naming
+        frames = video_processor.extract_frames(temp_video_path, frame_interval=30)
+
+        # Rename frames based on the video file's name
+        renamed_frames = []
+        for idx, frame_path in enumerate(frames, start=1):
+            new_name = f"{video_name}_{idx}.jpg"
+            new_path = os.path.join(video_processor.save_dir, new_name)
+            os.rename(frame_path, new_path)
+            renamed_frames.append(new_path)
+
+        # Clean up the temporary video file
+        video_processor.clean_up(temp_video_path)
+
+        return {"message": "Frames extracted successfully.", "frames": renamed_frames}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
+
+# Configure the Inference Client
+CLIENT = InferenceHTTPClient(
+    api_url="https://detect.roboflow.com",
+    api_key="Vg1cHJhZQ7cqNjnGSYVk"
+)
+
+# Initialize AI with frames directory and client
+ai_processor = AI(frames_dir="frames", client=CLIENT)
+
+
+@app.get("/infer-images/")
+def infer_images():
+    """
+    Get all images in the frames directory and infer them using the API,
+    then return the image with the highest total value and its value.
+    """
+    try:
+        # Call the method from the AI class
+        model_id = "jordan-coins-detection-nqdbs/5"
+        result = ai_processor.infer_images(model_id=model_id)
+
+        if result["best_image"]:
+            return {
+                "message": "Inference completed successfully.",
+                "best_image": result["best_image"],
+                "total_value": result["total_value"]
+            }
+        else:
+            return {"message": "No images found or processed."}
+    except Exception as e:
+        return {"error": str(e)}
